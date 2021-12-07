@@ -5,10 +5,10 @@ using System.Text;
 using System.Threading.Tasks;
 using Sandbox;
 
-namespace MinimalExample
+namespace QuadTree
 {
 	//This is the class I am using to generate noise values.
-	class SimpleSlerpNoise
+	public class SimpleSlerpNoise
 	{
 		int seed;
 		int octaves;

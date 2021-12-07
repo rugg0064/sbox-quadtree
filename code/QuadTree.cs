@@ -4,16 +4,19 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Sandbox;
-namespace MinimalExample
+
+namespace QuadTree
 {
     internal class QuadTree
     {
+		Entity entity;
+
 		int state; //0 is empty, 1 is full, -1 is "complex" ie, children have data
 
-		private QuadTree? node00;
-		private QuadTree? node01;
-		private QuadTree? node10;
-		private QuadTree? node11;
+		private QuadTree node00;
+		private QuadTree node01;
+		private QuadTree node10;
+		private QuadTree node11;
 		private int extentsXMin;
 		private int extentsXMax;
 		private int extentsYMin;
@@ -49,19 +52,10 @@ namespace MinimalExample
 
 		public QuadTree( QuadTree parent, int xmin, int xmax, int ymin, int ymax, bool[,] data ) : this( parent, xmin, xmax, ymin, ymax )
 		{
-			(bool, bool) aisibResult = allIsSameInBounds( extentsXMin, extentsXMax, extentsYMin, extentsYMax, data );
-			if ( aisibResult.Item1 )
+			buildFromFunction( ( x, y ) =>
 			{
-				this.state = aisibResult.Item2 ? 1 : 0;
-			}
-			else
-			{
-				this.state = -1;
-				this.node00 = new QuadTree( this, extentsXMin, midPointX, extentsYMin, midPointY, data );
-				this.node01 = new QuadTree( this, extentsXMin, midPointX, midPointY + 1, extentsYMax, data );
-				this.node10 = new QuadTree( this, midPointX + 1, extentsXMax, extentsYMin, midPointY, data );
-				this.node11 = new QuadTree( this, midPointX + 1, extentsXMax, midPointY + 1, extentsYMax, data );
-			}
+				return data[x, y];
+			} );
 		}
 
 		private void ensureInBounds( int x, int y )
@@ -72,12 +66,20 @@ namespace MinimalExample
 			}
 		}
 
-		public void buildFromRandom(Func<int, int, bool> generator)
+		public void buildFromFunction(Func<int, int, bool> generator)
 		{
 			if ( extentsXMax == extentsXMin )
 			{
 				//Console.WriteLine($"Hit a 1x1, result {generator(extentsXMin, extentsYMin)}");
 				this.state = generator( extentsXMin, extentsYMin ) ? 1 : 0;
+				node00?.deleteEntity();
+				node01?.deleteEntity();
+				node10?.deleteEntity();
+				node11?.deleteEntity();
+				node00 = null;
+				node01 = null;
+				node10 = null;
+				node11 = null;
 			}
 			else
 			{
@@ -87,21 +89,34 @@ namespace MinimalExample
 				node01 = new QuadTree( this, extentsXMin, midPointX, midPointY + 1, extentsYMax );
 				node10 = new QuadTree( this, midPointX + 1, extentsXMax, extentsYMin, midPointY );
 				node11 = new QuadTree( this, midPointX + 1, extentsXMax, midPointY + 1, extentsYMax );
-				node00.buildFromRandom( generator );
-				node01.buildFromRandom( generator );
-				node10.buildFromRandom( generator );
-				node11.buildFromRandom( generator );
+				node00.buildFromFunction( generator );
+				node01.buildFromFunction( generator );
+				node10.buildFromFunction( generator );
+				node11.buildFromFunction( generator );
 				//Console.WriteLine($"{node00.state} {node01.state} {node10.state} {node11.state}");
 				int childState = node00.state;
 				if ( childState != -1 && node00.state == node01.state && node01.state == node10.state && node10.state == node11.state )
 				{ //All children are all solid and all the same color
 				  //Console.WriteLine("merging");
+					node00?.deleteEntity();
+					node01?.deleteEntity();
+					node10?.deleteEntity();
+					node11?.deleteEntity();
 					node00 = null;
 					node01 = null;
 					node10 = null;
 					node11 = null;
 					this.state = childState;
 				}
+			}
+		}
+
+		private void deleteEntity()
+		{
+			if(entity != null)
+			{
+				entity.Delete();
+				entity = null;
 			}
 		}
 
@@ -251,14 +266,35 @@ namespace MinimalExample
 		
 		public void display(Vector3 startPos, float scale)
 		{
-			Vector3 extentsMin = new Vector3( extentsXMin, extentsYMin, 0 ) * scale;
-			Vector3 extentsMax = new Vector3( extentsXMax, extentsYMax, 0 ) * scale;
 			if(state == 1)
 			{
-				DebugOverlay.Box( startPos + extentsMin, startPos + extentsMax, Color.Green, 1 );
+				//DebugOverlay.Box( startPos + extentsMin, startPos + extentsMax, Color.Green, 10 );
+				
+				if(this.entity == null)
+				{
+					Vector3 extentsMin = new Vector3( extentsXMin, 0, extentsYMin ) * scale;
+					Vector3 extentsMax = new Vector3( extentsXMax, 0, extentsYMax ) * scale;
+					Vector3 trueSize = extentsMax - extentsMin + new Vector3( 0, 100, 0 ) + Vector3.One * scale;
+
+					var entity = new PrimitiveEntity();
+					entity.Position = startPos + extentsMin + trueSize / 2;
+					BasePrimitive primitive = new PrimitiveBox();
+					primitive.Origin = startPos + extentsMin + trueSize / 2;
+					primitive.Size = trueSize;
+					primitive.Entity = entity; // Circular dependency bad
+
+					entity.Primitive = primitive;
+					entity.CreateMesh();
+					this.entity = entity;
+				}
 			}
 			if( this.state == -1)
 			{
+				if(this.entity != null)
+				{
+					deleteEntity();
+				}
+
 				node00.display( startPos, scale );
 				node01.display( startPos, scale );
 				node10.display( startPos, scale );
